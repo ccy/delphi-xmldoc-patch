@@ -1,0 +1,101 @@
+== Introduction
+
+This project attempt to patch native Delphi XML library that not fully support namespace in XML document.
+
+== Requirements
+
+The project is a TestInsight DUnit project.  It requires these external library:
+
+- https://github.com/MahdiSafsafi/DDetours[Delphi Detours Library ]
+- https://bitbucket.org/sglienke/testinsight/[TestInsight]
+
+The project use http://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/maindoc/UBL-Invoice-2.1.xsd[UBL-Invoice-2.1.xsd] as example.
+
+== Solution
+
+Delphi https://docwiki.embarcadero.com/RADStudio/Athens/en/Using_the_XML_Data_Binding_Wizard[XML Data Binding] generates `.pas` file from XSD.  The `.pas` file don't work well for multiple namespace defined in XSD.
+
+Next, extract main node's attributes contains `xmlns` from XSD and add to the main xml node in `.pas` using `stored` attribute.  For example:
+
+[source,delphi]
+....
+  [stored('''
+     xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+     xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+     xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+     xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2"
+     xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+     xmlns:ccts="urn:un:unece:uncefact:documentation:2"
+     targetNamespace="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+     elementFormDefault="qualified"
+     attributeFormDefault="unqualified"
+     version="2.1"
+  ''')]
+  TXMLInvoiceType = class(TXMLNode, IXMLInvoiceType)
+  ...
+  end;
+....
+
+The patch shall utilize the stored attribute to serve the xml nodes.
+
+== Known problems
+
+The XML Data Binding Wizard unable to generate code for `xsd:extension` and `xsd:restriction` node:
+
+.*http://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/maindoc/UBL-Invoice-2.1.xsd[UBL-Invoice-2.1.xsd]*
+....
+  <xsd:element ref="cac:TaxTotal" minOccurs="0" maxOccurs="unbounded"/>
+....
+
+.*https://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/common/UBL-CommonAggregateComponents-2.1.xsd[UBL-CommonAggregateComponents-2.1.xsd]*
+....
+   <xsd:element name="TaxTotal" type="TaxTotalType"/>
+
+   <xsd:complexType name="TaxTotalType">
+      <xsd:sequence>
+         <xsd:element ref="cbc:TaxAmount" minOccurs="1" maxOccurs="1"/>
+         <xsd:element ref="cbc:RoundingAmount" minOccurs="0" maxOccurs="1"/>
+         <xsd:element ref="cbc:TaxEvidenceIndicator" minOccurs="0" maxOccurs="1"/>
+         <xsd:element ref="cbc:TaxIncludedIndicator" minOccurs="0" maxOccurs="1"/>
+         <xsd:element ref="cac:TaxSubtotal" minOccurs="0" maxOccurs="unbounded"/>
+      </xsd:sequence>
+   </xsd:complexType>
+....
+
+.*https://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/common/UBL-CommonBasicComponents-2.1.xsd[UBL-CommonBasicComponents-2.1.xsd]*
+....
+  <xsd:element name="TaxAmount" type="TaxAmountType"/>
+
+   <xsd:complexType name="TaxAmountType">
+      <xsd:simpleContent>
+         <xsd:extension base="udt:AmountType"/> // <1>
+      </xsd:simpleContent>
+   </xsd:complexType>
+....
+
+.*https://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/common/UBL-UnqualifiedDataTypes-2.1.xsd[UBL-UnqualifiedDataTypes-2.1.xsd]*
+....
+  <xsd:complexType name="AmountType">
+    <xsd:simpleContent>
+      <xsd:restriction base="ccts-cct:AmountType"> // <1>
+        <xsd:attribute name="currencyID" type="xsd:normalizedString" use="required">
+        </xsd:attribute>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+....
+
+.*https://docs.oasis-open.org/ubl/os-UBL-2.1/xsdrt/common/CCTS_CCT_SchemaModule-2.1.xsd[CCTS_CCT_SchemaModule-2.1.xsd]*
+....
+   <xsd:complexType name="AmountType">
+      <xsd:simpleContent>
+         <xsd:extension base="xsd:decimal"> // <1>
+            <xsd:attribute name="currencyID" type="xsd:normalizedString" use="optional">
+            </xsd:attribute>
+            <xsd:attribute name="currencyCodeListVersionID" type="xsd:normalizedString" use="optional">
+            </xsd:attribute>
+         </xsd:extension>
+      </xsd:simpleContent>
+   </xsd:complexType>
+....
+<1> XML attributes defined not rendered by XML Data Binding Wizard.
